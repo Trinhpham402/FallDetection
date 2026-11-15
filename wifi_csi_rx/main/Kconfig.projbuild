@@ -1,0 +1,37 @@
+menu "CSI receiver"
+config APP_RX_NODE_ID
+    int "RX node ID"
+    range 1 2
+    default 1
+config APP_WIFI_SSID
+    string "Wi-Fi SSID"
+    default ""
+config APP_WIFI_PASSWORD
+    string "Wi-Fi password"
+    default ""
+config APP_WIFI_CHANNEL
+    int "Expected AP and TX channel"
+    range 1 13
+    default 6
+config APP_SERVER_IP
+    string "Collector IPv4"
+    default "192.168.1.100"
+config APP_SERVER_PORT
+    int "Collector UDP port"
+    range 1 65535
+    default 5005
+config APP_TX_MAC
+    string "TX STA MAC (required)"
+    default "00:00:00:00:00:00"
+config APP_MIN_CSI_INTERVAL_MS
+    int "Minimum CSI interval (ms; 0 disables throttle)"
+    range 0 60000
+    default 0
+    help
+        Keep zero for the 100 Hz collection target. A positive interval can
+        discard CSI and is checked again by the host exporter.
+config APP_QUEUE_DEPTH
+    int "Packet queue depth"
+    range 4 256
+    default 128
+endmenu

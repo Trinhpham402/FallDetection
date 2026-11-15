@@ -1,0 +1,46 @@
+{
+  "source": "/home/trinhpt/DATN_PTIT/FallDetectionFirmware/firmware/captures/session01.dat",
+  "note": "Timing is calculated separately for each RX; their local clocks are not synchronized.",
+  "counts": {
+    "RX1/CSI": 1504,
+    "RX1/TX_EVENT": 1504,
+    "RX2/CSI": 1233,
+    "RX2/TX_EVENT": 1233
+  },
+  "iq_byte_lengths": {
+    "256": 2737
+  },
+  "flags": {
+    "0": 2737
+  },
+  "tx_macs": [
+    "E0:72:A1:D5:98:74"
+  ],
+  "channels": [
+    6
+  ],
+  "nodes": {
+    "1": {
+      "csi_records": 1504,
+      "csi_timestamp_span_s": 510.301443,
+      "csi_rate_hz": 2.9453179500415403,
+      "interval_ms": {
+        "min": 40.629,
+        "median": 50.018,
+        "max": 434502.837
+      },
+      "timestamp_regressions": 0
+    },
+    "2": {
+      "csi_records": 1233,
+      "csi_timestamp_span_s": 62.198135,
+      "csi_rate_hz": 19.807667866568668,
+      "interval_ms": {
+        "min": 41.034,
+        "median": 49.9965,
+        "max": 199.968
+      },
+      "timestamp_regressions": 0
+    }
+  }
+}

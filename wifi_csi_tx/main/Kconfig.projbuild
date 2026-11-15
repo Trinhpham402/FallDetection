@@ -1,0 +1,19 @@
+menu "CSI probe transmitter"
+config APP_WIFI_SSID
+    string "Wi-Fi SSID"
+    default ""
+config APP_WIFI_PASSWORD
+    string "Wi-Fi password (empty for open AP)"
+    default ""
+config APP_WIFI_CHANNEL
+    int "Expected 2.4 GHz channel"
+    range 1 13
+    default 6
+config APP_TX_INTERVAL_MS
+    int "Probe interval (ms)"
+    range 10 60000
+    default 10
+    help
+        Local ESP-Fi-HAR collection target: 100 probes/s. Measure actual CSI
+        throughput on each RX; this is not a guarantee of 100 received samples/s.
+endmenu

@@ -1,0 +1,23 @@
+# ESP-IDF: build và cấu hình cục bộ
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Dữ liệu thu và log
+/captures/
+*.log
+
+# Thông tin bí mật
+.env
+.env.*
+!.env.example
+
+# LibreOffice lock files
+.~lock.*#
