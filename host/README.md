@@ -1,193 +1,131 @@
 # Ubuntu UDP Collector — Thu thập CSI từ RX1/RX2
 
-**Mục tiêu:** chạy một UDP server trên Ubuntu để nhận và lưu các gói **WCS2** (HT-LTF I/Q + metadata PHY), **WCS1** cũ (CSI I/Q) và **WTX1** (sự kiện nhận probe TX) của hai RX. Thành phần này chạy với Python 3.10+ và **không phụ thuộc phiên bản ESP-IDF trên Ubuntu**; ESP-IDF v6.0.2 chỉ dùng để build firmware trên ESP32-S3.
+Trước mắt, tập trung thu thập dữ liệu CSI từ hai bộ thu ESP32-S3 về máy Ubuntu. Mỗi lần thu có thời gian đếm ngược do người dùng nhập, sau đó ghi dữ liệu trong **17 giây**, với tốc độ mục tiêu **50 gói CSI/giây cho mỗi RX**.
 
-Collector **không thực hiện AI**, không tái tạo chính xác từng cặp mẫu CSI của RX1 và RX2, không phải hệ thống cảnh báo y tế.
+`collector.py` chạy trên Ubuntu với **Python 3.10+**, chỉ dùng thư viện chuẩn. Chương trình ghi CSV chứa CSI, không tạo file `.dat`. Các script checker/exporter không nằm trong phạm vi bước thu dữ liệu này.
 
-## 1. Các file
+## Cách chạy
+
+Từ thư mục gốc `firmware/`:
+
+```bash
+python3 host/collector.py --out captures/trial01
+```
+
+Chương trình mở UDP `0.0.0.0:5005`, hỏi số giây đếm ngược rồi thu 17 giây. Nhập `0` để bắt đầu ngay. Kết quả được lưu tại `captures/trial01.csv`.
+
+Có thể truyền số giây đếm ngược trực tiếp để chạy không tương tác:
+
+```bash
+python3 host/collector.py --bind 0.0.0.0 --port 5005 \
+  --out captures/trial02.csv --countdown 5
+```
+
+- Bỏ `--out` để dùng tên mặc định `captures/trial_YYYYMMDD_HHMMSS.csv`.
+- File đã tồn tại sẽ bị từ chối, không ghi đè hoặc ghi nối.
+- Trong lúc thu, số CSI mỗi RX được in và file được flush khoảng mỗi giây.
+- Nhấn **Ctrl+C** trong khi ghi để dừng sớm và đóng file, giữ phần đã thu. Nhấn khi đang nhập/đếm ngược để hủy trước khi tạo file.
+- Phiên đủ thời gian có exit code `0`; dừng/hủy bằng Ctrl+C có exit code `130`; lỗi cấu hình, mạng hoặc file có exit code `1` (đối số CLI không hợp lệ: `2`).
+- Tốc độ 50 CSI/giây là mục tiêu theo cấu hình TX; collector không tự bỏ bớt mẫu hoặc nội suy để đạt con số này.
+
+## 1. Quy trình thu dữ liệu
+
+1. **Mở cổng UDP**, mặc định `5005`, chờ RX1/RX2 gửi gói tới.
+2. **Phân biệt loại gói**: `WCS2`/`WCS1` chứa CSI; `WTX1` là sự kiện RX nhận probe từ TX.
+3. **Kiểm tra cấu trúc gói** theo từng giao thức. Loại gói không hợp lệ, không ghi chúng vào dữ liệu thu.
+4. **Giữ nguyên dữ liệu I/Q thô và ghi đúng 6 cột CSV**: `timestamp`, `csi_seq`, `node_id`, `mac`, `len`, `buf`. **Không ghi gói `WTX1` vào CSV.**
+5. **In số lượng CSI đã ghi của từng RX**, tách riêng RX1 và RX2; không cộng `WTX1` vào số lượng CSI.
+6. **Cho người dùng nhập số giây đếm ngược**. Hiển thị thời gian còn lại và chỉ bắt đầu ghi dữ liệu khi đếm ngược kết thúc. Dữ liệu nhận trước thời điểm bắt đầu không được đưa vào phiên thu.
+7. **Mỗi lần thu chỉ ghi trong 17 giây**, sau đó tự động dừng, lưu và đóng file. Tốc độ mục tiêu là **50 gói CSI/giây cho mỗi RX**.
+
+## 2. Trình tự một lần thu
 
 ```text
-host/
-├── README.md            # tài liệu này
-├── collector.py         # UDP server, parser WCS2/WCS1/WTX1, ghi dat + CSV
-├── check_capture.py     # kiểm tra file .dat đã thu
-├── export_esp_fi.py     # xuất một trial WCS2 thành CSIamp (950,52)
-├── ESP_FI_CAPTURE.md    # quy trình thu/gắn nhãn/xuất MAT
-└── tests/              # giao thức, export và UDP; test_host.py   # kiểm thử giao thức, file và UDP loopback
+Mở UDP 5005 và chờ dữ liệu RX1/RX2
+                  ↓
+Người dùng nhập số giây đếm ngược
+                  ↓
+Đếm ngược — chưa ghi dữ liệu của phiên thu
+                  ↓
+Bắt đầu ghi CSI vào CSV và đếm riêng từng RX
+                  ↓
+Ghi trong 17 giây
+                  ↓
+Tự dừng, đóng file và in kết quả RX1/RX2
 ```
 
-- `collector.py`: nhận UDP tại một cổng chung, giải mã header, ghi toàn bộ datagram hợp lệ vào `.dat`; ghi metadata và mảng I/Q có dấu trong cột `data` vào `.csv`.
-- `check_capture.py`: đọc `.dat` để thống kê số CSI và TX_EVENT, tốc độ ghi nhận/giây từng RX, MAC nguồn và giá trị biên độ CSI thô.
+Trong thời gian chờ và đếm ngược, chương trình cần tiếp tục nhận và bỏ dữ liệu cũ để không ghi lại các gói tồn đọng khi bắt đầu phiên thu. Mốc bắt đầu và kết thúc phiên được tính theo đồng hồ monotonic trên Ubuntu; timestamp cục bộ của RX vẫn được giữ trong dữ liệu.
 
-Quy trình mới: [thu 100 Hz, gắn nhãn và xuất MAT cho ESP-Fi-HAR](ESP_FI_CAPTURE.md). Dùng prefix capture mới vì CSV đã thêm cột PHY và `data`; không append vào header cũ.
-
-## 2. Chuẩn bị máy Ubuntu
-
-Kết nối Ubuntu cùng LAN/router với RX1/RX2. Đảm bảo router cho phép thiết bị Wi-Fi gửi UDP đến máy Ubuntu.
-
-```bash
-python3 --version
-ip -4 addr
-```
-
-Ghi lại IPv4 của Ubuntu, ví dụ `192.168.1.100` (IP minh họa). Tại project `wifi_csi_rx/`, chạy `idf.py menuconfig`, nhập IP này vào **CSI receiver → Collector IPv4** (`APP_SERVER_IP`), rồi build và nạp lần lượt RX1/RX2 với node ID tương ứng. Nên dùng DHCP reservation hoặc IP tĩnh để IP không thay đổi trong quá trình thu.
-
-Kiểm tra cổng UDP 5005 có được sử dụng hay chưa:
-
-```bash
-ss -lun | grep ':5005' || true
-```
-
-Nếu Ubuntu bật UFW (tùy môi trường), cho phép port và kiểm tra trạng thái:
-
-```bash
-sudo ufw allow 5005/udp
-sudo ufw status
-```
-
-**Lưu ý:** `--bind 0.0.0.0` nghĩa là server lắng nghe trên tất cả IPv4 interface, **không phải** địa chỉ mà RX gửi tới. RX phải dùng IP thật của Ubuntu (được cấu hình qua `APP_SERVER_IP`). Hạn chế dùng trên mạng công cộng vì dữ liệu chưa mã hóa.
-
-## 3. Chạy collector
-
-Từ **thư mục gốc** dự án:
-
-```bash
-mkdir -p captures
-python3 host/collector.py --bind 0.0.0.0 --port 5005 --out captures/test01
-```
-
-Hoặc chỉ lắng nghe trên một IPv4 cụ thể của Ubuntu:
-
-```bash
-python3 host/collector.py --bind 192.168.1.100 --port 5005 --out captures/test02
-```
-
-Nên **khởi động collector trước RX1/RX2** để không bỏ mất các gói thử nghiệm đầu tiên.
-
-Collector sẽ hiển thị dòng dạng:
+Ví dụ giao diện:
 
 ```text
-Listening UDP 0.0.0.0:5005; writing captures/test01.dat and captures/test01.csv
-Stats: {1: {'CSI': 150, 'TX_EVENT': 180, 'tx_gaps': 0},
-        2: {'CSI': 140, 'TX_EVENT': 178, 'tx_gaps': 2}}
+Listening UDP 0.0.0.0:5005
+Nhập số giây đếm ngược: 5
+Bắt đầu sau: 5 ... 4 ... 3 ... 2 ... 1
+Đang ghi CSI trong 17 giây...
+RX1: ... CSI | RX2: ... CSI
+Hoàn tất. Đã đóng file CSV.
 ```
 
-Các con số ở trên chỉ là **minh họa**, không phải kết quả đo phần cứng. Mỗi 5 giây chương trình xuất số lượng bản ghi lũy kế. Dừng an toàn bằng `Ctrl+C` để các file được flush và đóng.
+Các dấu `...` biểu thị số liệu phụ thuộc phiên thu, không phải kết quả đo phần cứng.
 
-Thống kê vẫn xuất khi chưa nhận dữ liệu, kèm `invalid` là số datagram bị từ chối. `tx_gaps` đếm khoảng nhảy sequence TX quan sát được riêng cho từng RX/MAC, hỗ trợ vòng uint32 và đặt lại mốc khi timestamp lùi. Đây là ước lượng: đảo thứ tự UDP, thiết bị khởi động lại hoặc gói đến muộn có thể làm sai số; không phải phép đo chính xác số probe bị mất. Bộ đếm chỉ tính lần chạy collector hiện tại.
+## 3. Dữ liệu CSV
 
-Parser kiểm tra độ dài, node ID 1/2, kênh 1–13, flags và byte reserved theo firmware RX. Datagram lỗi không được ghi vào file. File được flush mỗi 5 giây và đóng khi Ctrl+C; hai file không được ghi theo giao dịch nguyên tử, nên sự cố mất điện/ghi đĩa có thể khiến số dòng CSV và bản ghi DAT khác nhau. Chỉ chạy một collector ghi vào một tiền tố file.
-
-**Chú ý:** nếu chạy lại với **cùng `--out`**, collector sẽ **append** vào file cũ. Để đo một phiên độc lập, chọn tiền tố file mới (ví dụ `captures/session_20261024_01`).
-
-## 4. Kết quả đầu ra
-
-Khi dùng `--out captures/test01` sẽ có:
-
-```text
-captures/test01.dat
-captures/test01.csv
-```
-
-**`test01.dat`** ghi theo format lặp: `uint32 little-endian chiều dài datagram` + toàn bộ datagram. Giữ dữ liệu CSI I/Q để xử lý lại sau này.
-
-**`test01.csv`** có các cột:
+Mỗi dòng CSV tương ứng với **một gói CSI hợp lệ được ghi trong cửa sổ 17 giây**. CSV không chứa dòng sự kiện `WTX1`.
 
 | Cột | Nội dung |
 |---|---|
-| `recv_utc` | thời gian nhận trên Ubuntu dạng UTC |
-| `host_monotonic_ns` | monotonic clock của Ubuntu (ns) |
-| `sender_ip` | IP của ESP32-S3 RX đã gửi UDP |
-| `kind` | `CSI` hoặc `TX_EVENT` |
-| `node_id` | `1` = RX1, `2` = RX2 |
-| `channel` | Wi-Fi channel |
-| `rssi`, `noise` | metadata PHY khi có |
-| `flags` | bit 0: 4 byte CSI đầu không hợp lệ |
-| `csi_seq` | số thứ tự CSI cục bộ trên từng RX; **chỉ có ở CSI** |
-| `tx_seq` | thứ tự probe TX; **chỉ có ở TX_EVENT** |
-| `rx_local_us` | `esp_timer_get_time()` trên RX, **không đồng bộ giữa RX1/RX2** |
-| `tx_local_us` | timestamp từ TX, chỉ có ở TX_EVENT |
-| `tx_mac` | MAC nguồn phát TX |
-| `iq_len` | số byte dữ liệu CSI I/Q; `0` ở TX_EVENT |
-| `profile`, `sig_mode`, `cwb`, `mcs`, `stbc`, `secondary_channel`, `sgi`, `rx_hw_us` | metadata WCS2; trống với WCS1/TX_EVENT |
-| `data` | mảng signed int8 Q,I `[ ... ]`; trống ở TX_EVENT |
+| `timestamp` | Timestamp cục bộ của RX (`rx_local_us`), đơn vị microsecond |
+| `csi_seq` | Sequence CSI uint32 do RX cung cấp; cục bộ từng RX, có thể quay vòng và reset khi RX khởi động lại |
+| `node_id` | `1` cho RX1, `2` cho RX2 |
+| `mac` | MAC nguồn TX, không phải MAC của RX |
+| `len` | Số byte I/Q, không bao gồm header; WCS2 hiện tại là `128` |
+| `buf` | Mảng JSON chứa toàn bộ số nguyên có dấu theo thứ tự `[Q0,I0,Q1,I1,...]` |
 
-**Không** dùng `csi_seq` của RX1 ghép trực tiếp với `csi_seq` RX2 hoặc `tx_seq` của `WTX1`.
-
-## 5. Kiểm tra file thu
-
-Dừng collector trước khi phân tích; từ thư mục gốc chạy:
-
-```bash
-python3 host/check_capture.py captures/test01.dat
-```
-
-Kết quả minh họa:
+Header CSV luôn là:
 
 ```text
-Capture: captures/test01.dat  bad=0
-  RX1: CSI=250, TX_EVENT=260, source_MAC=[('24:6F:28:AA:BB:CC', 510)]
-    CSI: measured mean throughput ~18.75 records/s
-    TX_EVENT: measured mean throughput ~19.90 records/s
-    CSI mean |H|: mean=32.13, range=20.25..44.20 (uncalibrated)
-  RX2: CSI=245, TX_EVENT=258, ...
+timestamp,csi_seq,node_id,mac,len,buf
 ```
 
-Các số ở trên **không phải kết quả thực nghiệm**. Mục tiêu là cả hai RX xuất hiện và có **CSI > 0**, MAC trùng MAC TX cấu hình, độ dài I/Q hợp lệ và mẫu thay đổi khi người chuyển động.
+Giữ nguyên giá trị I/Q trong cột `buf`, chưa chuyển thành biên độ, chuẩn hóa hoặc nội suy. Theo định dạng ESP32 hiện tại, mỗi cặp được lưu Q trước, I sau; `len=128` tương ứng 64 cặp Q/I. Trường `buf` được CSV tự đặt trong dấu ngoặc kép vì chứa dấu phẩy.
 
-Lưu ý: `check_capture.py` tính tốc độ trung bình dựa trên timestamp cục bộ của từng RX. Nếu file chứa nhiều lần khởi động lại thiết bị hoặc nhiều phiên append, chỉ số tốc độ có thể không chính xác.
+Parser vẫn kiểm tra metadata PHY và cờ hợp lệ nhưng không xuất thêm cột. WCS2 yêu cầu profile 1, I/Q 128 byte, HT20/MCS0/long GI, không STBC hoặc secondary channel. CSI có cờ invalid đầu vẫn giữ nguyên buffer và được đếm ở terminal; CSV 6 cột không lưu cờ này để xác định lại từng dòng sau đó.
 
-Tốc độ được tính riêng từng loại bản ghi theo `(số bản ghi - 1) / khoảng timestamp`. Nếu timestamp lùi hoặc không đủ khoảng thời gian, công cụ báo không thể tính tốc độ. Biên độ báo cáo là trung bình của biên độ trung bình từng bản ghi CSI có I/Q sử dụng được, chưa hiệu chuẩn.
+`timestamp` không phải thời gian UTC và không đồng bộ giữa RX1/RX2. Đồng hồ monotonic trên Ubuntu chỉ dùng nội bộ để điều khiển cửa sổ thu 17 giây.
 
-Công cụ đọc tuần tự, đếm `bad` khi gói lỗi và trả exit code 1 nếu có lỗi. Với bản ghi có chiều dài hợp lệ nhưng nội dung sai, công cụ tiếp tục sang bản ghi sau. Nếu prefix chiều dài hỏng, vượt 552 byte hoặc file bị cắt dở, công cụ dừng vì không thể xác định ranh giới bản ghi tiếp theo an toàn.
+## 4. Thời lượng và tốc độ thu
 
-## 6. Giải mã CSI I/Q trong Python
+**17 giây là thời lượng; 50 gói CSI/giây là tốc độ mục tiêu. Đây là hai thông số độc lập.**
 
-```python
-from pathlib import Path
-import struct
-import sys
-sys.path.insert(0, 'host')
-from collector import parse_datagram, iq_to_complex
-
-with Path('captures/test01.dat').open('rb') as f:
-    size = struct.unpack('<I', f.read(4))[0]
-    packet = parse_datagram(f.read(size))
-    if packet.kind == 'CSI':
-        complex_iq = iq_to_complex(packet)
-        print(packet.node_id, packet.tx_mac, complex_iq[:5])
-```
-
-Đây chỉ là ví dụ lấy **bản ghi đầu tiên**. Nếu bản ghi đầu là TX_EVENT thì không có I/Q; cần lặp đến khi gặp `kind == 'CSI'`.
-
-Ở `WCS1`, CSI I/Q được giữ nguyên dưới dạng byte `int8` **imaginary, real** trong `packet.iq` và file DAT. Nếu `flags & 1` thì `iq_to_complex()` bỏ hai cặp phức đầu. Chưa có xử lý hiệu chuẩn theo AGC/RSSI hoặc ánh xạ chính xác vị trí subcarrier theo kiểu LTF/PHY.
-
-## 7. Kiểm tra mạng và xử lý lỗi
-
-| Hiện tượng | Cách kiểm tra |
+| Thông số | Mục tiêu |
 |---|---|
-| Stats rỗng, không có dữ liệu | Kiểm tra RX kết nối Wi-Fi, IP server, port 5005, firewall, AP isolation. |
-| RX báo gửi UDP nhưng Ubuntu không nhận | Thử `sudo tcpdump -ni any udp port 5005` nếu đã cài tcpdump. |
-| Chỉ có `node_id=1` | Kiểm tra RX2 dùng binary riêng và `node_id=2`. |
-| Có `TX_EVENT` nhưng `CSI=0` | ESP-NOW đã tới RX, nhưng CSI pipeline chưa hoạt động; đọc log `wifi_csi_cb`. |
-| `Ignore invalid UDP` | Kiểm tra magic WCS2/WCS1/WTX1; không dùng parser ADR-018 trực tiếp. |
-| `Permission denied` khi ghi captures | Kiểm tra quyền ghi thư mục, `pwd`, dung lượng đĩa. |
-| `Address already in use` | Collector khác đang lắng nghe cùng IP:port; tìm bằng `ss -lunp`. |
+| Thời gian ghi | 17 giây, không bao gồm đếm ngược |
+| Tốc độ CSI mỗi RX | 50 gói/giây |
+| Số mẫu dự kiến mỗi RX | Khoảng `17 × 50 = 850` gói CSI |
+| Tổng hai RX | Khoảng 1.700 dòng CSI nếu cả hai đạt tốc độ mục tiêu |
 
-## 8. Kiểm thử tự động
+Số mẫu thực tế có thể khác mục tiêu vì tốc độ phát hoặc mất gói. Không thêm mẫu giả hay kéo dài phiên để bù cho đủ 850 mẫu. Kết thúc phiên, chương trình báo số CSI đã ghi và tốc độ trung bình riêng từng RX (`số CSI đã ghi / 17 giây`). Nếu dừng sớm, mẫu số là thời lượng đã ghi. Không có RX hoặc chỉ có WTX1 vẫn kết thúc đúng hạn và tạo CSV chỉ có header.
+
+Để hướng tới 50 probe/giây, cần cấu hình TX với `APP_TX_INTERVAL_MS=20` ms rồi build/flash lại. Cấu hình mặc định TX hiện tại là 10 ms, tương ứng mục tiêu 100 probe/giây. Tốc độ phát probe không bảo đảm tốc độ CSI thực nhận được; cần đo trên từng RX. Thay đổi README không thay đổi cấu hình firmware.
+
+## 5. Kiểm thử phần mềm
 
 ```bash
 python3 -m unittest discover -s host/tests -v
-python3 -m py_compile host/collector.py host/check_capture.py host/export_esp_fi.py
+python3 -m py_compile host/collector.py
 ```
 
-Test kiểm tra byte mẫu từ firmware RX, I/Q có dấu, gói lỗi, append DAT/CSV, file bị cắt dở, thống kê và nhận UDP loopback rồi dừng bằng SIGINT. Test UDP cần môi trường cho phép tạo socket loopback. Các test **không thay thế việc đo CSI trên phần cứng**.
+Test kiểm tra WCS1/WCS2/WTX1, I/Q có dấu, gói lỗi, đúng 6 cột CSV và ánh xạ timestamp/sequence/MAC/buffer, bảo vệ file cũ, loại dữ liệu trước phiên thu, Ctrl+C và nhận UDP thật trong một phiên đủ 17 giây. Test đối chiếu encoder firmware cần `cc`; test UDP cần quyền tạo socket loopback. Kết quả kiểm thử không thay thế việc đo CSI trên ESP32 thật.
 
-## 9. Bảo mật và giới hạn
+## 6. Chuẩn bị và lưu ý
 
-- UDP CSI và ESP-NOW broadcast **không mã hóa**. Không truyền qua Internet, không chèn tên người, dữ liệu sức khỏe hoặc bí mật vào payload.
-- Timestamp TX, RX1 và RX2 không chung mốc; timestamp Ubuntu bao gồm jitter mạng.
-- CSI I/Q chỉ có thể dùng làm dataset sau khi chứng minh nguồn TX và tốc độ thu phù hợp.
-- Chưa có AI phát hiện té ngã, chưa có cảnh báo an toàn sinh mạng.
+- Ubuntu và RX1/RX2 cùng LAN; RX gửi tới IPv4 thật của Ubuntu và cổng UDP `5005`.
+- `0.0.0.0` chỉ là địa chỉ lắng nghe trên Ubuntu, không phải IP đích để cấu hình RX.
+- RX1/RX2 dùng node ID riêng `1` và `2`; TX/RX/router cùng kênh Wi-Fi 2.4 GHz.
+- Mỗi lần thu dùng tên file mới để tách biệt các phiên và tránh ghi đè hoặc ghi nối dữ liệu.
+- Sequence và timestamp cục bộ của RX1/RX2 không đồng bộ; không ghép mẫu chỉ bằng việc so hai giá trị này.
+- `WTX1` không chứa CSI, không được dùng thay cho mẫu CSI hoặc cộng vào tốc độ CSI.
+- Giai đoạn này chỉ thu dữ liệu, chưa huấn luyện hoặc suy luận AI.
 
-**Tài liệu liên quan:** [`TX`](../wifi_csi_tx/README.md) · [`RX`](../wifi_csi_rx/README.md) · [`Tổng quan dự án`](../README.md).
+**Tài liệu liên quan:** [Firmware TX](../wifi_csi_tx/README.md) · [Firmware RX](../wifi_csi_rx/README.md) · [Tổng quan dự án](../README.md).

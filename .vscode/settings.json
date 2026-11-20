@@ -1,0 +1,13 @@
+{
+    "idf.currentSetup": "/home/trinhpt/.espressif/v6.0.2/esp-idf",
+    "idf.openOcdConfigs": [
+        "board/esp32s3-builtin.cfg"
+    ],
+    "idf.customExtraVars": {},
+    "clangd.path": "/home/trinhpt/.espressif/tools/esp-clang/esp-20.1.1_20250829/esp-clang/bin/clangd",
+    "clangd.arguments": [
+      "--background-index",
+      "--query-driver=**",
+      "--compile-commands-dir=/home/trinhpt/DATN_PTIT/FallDetectionFirmware/firmware/build"
+    ]
+}
