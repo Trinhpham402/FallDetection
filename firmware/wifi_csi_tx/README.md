@@ -85,7 +85,7 @@ SSID tối đa 32 byte và phải khác rỗng. Với AP dùng mật khẩu, dù
 xác thực hợp lệ của AP. `10 ms` tương ứng mục tiêu 100 gói/giây, không bảo đảm
 tốc độ CSI tại RX.
 
-Cấu hình thu hiện tại dùng HT20/MCS0/long GI cho HT-LTF data52. Xem [quy trình ESP-Fi-HAR](../host/ESP_FI_CAPTURE.md). Với sdkconfig cũ, kiểm tra `APP_TX_INTERVAL_MS=10` trước khi build.
+Cấu hình PHY hiện tại dùng HT20/MCS0/long GI. Mặc định TX là 10 ms/probe, còn collector hiển thị mục tiêu 50 CSI/s/RX; cần thống nhất nhịp thử nghiệm và đo CSI thực. Xem [hướng dẫn collector](../host/README.md) và [tổng quan firmware](../README.md). Repo hiện chưa có công cụ xuất mẫu ESP-Fi-HAR.
 
 ## 4. Build, flash và monitor
 

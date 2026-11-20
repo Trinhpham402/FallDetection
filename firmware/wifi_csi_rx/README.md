@@ -149,7 +149,7 @@ Cấu hình `CONFIG_ESP_WIFI_CSI_ENABLED=y` được đặt trong `sdkconfig.def
 
 **WCS2** (CSI profile 1): header 40 byte + 128 byte HT-LTF I/Q raw, mỗi cặp theo thứ tự **imaginary, real**. Header chứa metadata cũ và profile, sig_mode, cwb, mcs, stbc, secondary_channel, sgi, timestamp driver. RX chỉ nhận HT20/MCS0/long GI không STBC/secondary channel.
 
-Xem [bảng offset và quy trình chọn 52 sóng mang](../host/ESP_FI_CAPTURE.md). Collector giữ khả năng đọc WCS1 cũ; không dùng WCS1 để xuất mẫu profile mới.
+Xem encoder trong [`main/protocol.h`](main/protocol.h) và [định dạng CSV của collector](../host/README.md). Collector giữ khả năng đọc WCS1 cũ; repo hiện chưa có công cụ chọn 52 sóng mang hoặc xuất mẫu MAT.
 
 **WTX1** (TX_EVENT): 34 byte; gồm `node_id`, `channel`, `RSSI`, `tx_seq`, `tx_local_us`, `rx_local_us`, MAC TX.
 
