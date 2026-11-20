@@ -1,23 +1,27 @@
-# ESP-IDF: build và cấu hình cục bộ
-build/
-sdkconfig
-sdkconfig.old
-managed_components/
+# Local Codex and cloud configuration
+.agents/
+.codex/
+.aws/
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# Dữ liệu thu và log
-/captures/
-*.log
-
-# Thông tin bí mật
+# Local configuration and credentials
 .env
 .env.*
 !.env.example
+sdkconfig
+sdkconfig.old
+*.pem
+*.key
 
-# LibreOffice lock files
+# Generated ESP-IDF and Python files
+build/
+managed_components/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Captures, logs, and temporary exports
+captures/
+*.log
 .~lock.*#
+/firmware/df
